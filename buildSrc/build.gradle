@@ -17,4 +17,8 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation gradleApi()//gradle sdk
     implementation localGroovy()//groovy sdk
+
+    api 'org.codehaus.groovy:groovy-xml:3.0.9'
+    api 'com.squareup:javapoet:1.13.0'
+    compileOnly 'com.android.tools.build:gradle:8.10.1'
 }
