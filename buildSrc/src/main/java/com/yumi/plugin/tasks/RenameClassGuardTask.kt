@@ -32,6 +32,29 @@ open class RenameClassGuardTask @Inject constructor(
 
     private val random by lazy { Random() }
 
+    // Kotlin 及 Java 关键字黑名单，禁止被当作类名重命名
+    private val reservedKeywords = setOf(
+        // Kotlin 硬关键字
+        "as", "break", "class", "continue", "do", "else", "false", "for",
+        "fun", "if", "in", "interface", "is", "null", "object", "package",
+        "return", "super", "this", "throw", "true", "try", "typealias",
+        "typeof", "val", "var", "when", "while",
+        // Kotlin 软关键字 / 修饰符关键字
+        "abstract", "actual", "annotation", "by", "catch", "companion",
+        "const", "constructor", "crossinline", "data", "delegate",
+        "dynamic", "enum", "expect", "external", "field", "file",
+        "final", "finally", "get", "import", "init", "inline", "inner",
+        "infix", "it", "lateinit", "noinline", "open", "operator",
+        "out", "override", "param", "private", "property", "protected",
+        "public", "receiver", "reified", "sealed", "set", "setparam",
+        "suspend", "tailrec", "vararg", "where",
+        // Java 关键字
+        "boolean", "byte", "char", "double", "extends", "float",
+        "implements", "import", "instanceof", "int", "long", "native",
+        "new", "short", "static", "strictfp", "synchronized", "throws",
+        "transient", "void", "volatile"
+    )
+
     @TaskAction
     fun execute() {
         workDir(project.javaDir())
@@ -67,6 +90,10 @@ open class RenameClassGuardTask @Inject constructor(
         }
         val oldName = file.name.removeSuffix()
         if (oldName.isBlank()) {
+            return
+        }
+        // 文件名本身是关键字，跳过重命名
+        if (oldName.lowercase() in reservedKeywords) {
             return
         }
         val classPrefixNameArray = configExtension.classPrefixName
@@ -147,6 +174,8 @@ open class RenameClassGuardTask @Inject constructor(
         file: File, oldClassPath: String,
         newClassPath: String, oldName: String, newName: String
     ) {
+        // oldName 是关键字时，只替换完整类路径的 import，不做裸词替换
+        if (oldName.lowercase() in reservedKeywords) return
         val sb = StringBuilder()
         file.readLines().forEach {
             if (it.startsWith("import")) {
