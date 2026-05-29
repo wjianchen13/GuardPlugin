@@ -1,15 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    id 'com.cold.plugin'
 }
-
-//classResGuard {
-//    classPrefixName = ["Leo"]
-//    filterSuffixFiles = ["txt", "swift", "dart"]
-//    dirPrefixName = ["leo"]
-//    resPrefixName = ["leo_ta"]
-//}
 
 android {
     namespace 'com.yumi.lib_a'

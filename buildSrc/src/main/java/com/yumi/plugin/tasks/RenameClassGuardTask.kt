@@ -2,6 +2,7 @@ package com.yumi.plugin.tasks
 
 import com.yumi.plugin.entension.*
 import org.gradle.api.DefaultTask
+import org.gradle.api.Project
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 import java.util.*
@@ -57,24 +58,47 @@ open class RenameClassGuardTask @Inject constructor(
 
     @TaskAction
     fun execute() {
-        workDir(project.javaDir())
+        // 收集所有模块的 src/main/java 目录
+        val allJavaDirs = collectAllJavaDirs()
+        // 收集所有有 src/main 的模块（用于 res / manifest 替换）
+        val allAndroidProjects = collectAllAndroidProjects()
+        // 遍历每个模块目录，执行重命名
+        allJavaDirs.forEach { dir ->
+            workDir(dir, allJavaDirs, allAndroidProjects)
+        }
     }
 
-    private fun workDir(file: File) {
-        val listFiles = file.listFiles()
-        listFiles?.forEach {
+    /**
+     * 收集根项目下所有模块的 src/main/java 目录
+     */
+    private fun collectAllJavaDirs(): List<File> {
+        return project.rootProject.allprojects
+            .map { it.file("src/main/java") }
+            .filter { it.exists() }
+    }
+
+    /**
+     * 收集根项目下所有包含 src/main 的 Android 模块
+     */
+    private fun collectAllAndroidProjects(): List<Project> {
+        return project.rootProject.allprojects
+            .filter { it.file("src/main").exists() }
+    }
+
+    private fun workDir(file: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>) {
+        file.listFiles()?.forEach {
             if (it.isDirectory) {
-                workDir(it)
+                workDir(it, allJavaDirs, allAndroidProjects)
             } else {
-                renameClass(it)
+                renameClass(it, allJavaDirs, allAndroidProjects)
             }
         }
     }
 
-    private fun renameClass(file: File) {
+    private fun renameClass(file: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>) {
         val path = file.path.replace(File.separator, ".").removeSuffix()
         val suffix = file.name.getSuffix()
-        if (configExtension.filterSuffixFiles.contains(suffix)){
+        if (configExtension.filterSuffixFiles.contains(suffix)) {
             return
         }
         val javaPkg = "src.main.java."
@@ -110,25 +134,44 @@ open class RenameClassGuardTask @Inject constructor(
         val oldClassPath = path.substring(startIndex + length, path.length)
         val oldClassDir = oldClassPath.getDirPath()
         val newClassPath = "${oldClassDir}.${newName}"
+
+        // 1. 重命名文件
         file.renameTo(File(file.absolutePath.replace(oldName, newName)))
-        obfuscateAllClass(project.javaDir(), oldClassPath, newClassPath, oldName, newName)
-        obfuscateRes(oldClassPath, newClassPath, oldName)
+
+        // 2. 替换所有模块源码中的引用（跨模块）
+        allJavaDirs.forEach { javaDir ->
+            obfuscateAllClass(javaDir, oldClassPath, newClassPath, oldName, newName)
+        }
+
+        // 3. 替换所有模块资源文件中的引用（layout / navigation / AndroidManifest）
+        allAndroidProjects.forEach { proj ->
+            obfuscateRes(proj, oldClassPath, newClassPath, oldName)
+        }
     }
 
+    /**
+     * 替换指定模块的资源文件引用
+     */
     private fun obfuscateRes(
+        proj: Project,
         oldClassPath: String,
         newClassPath: String,
         oldName: String
     ) {
-        val listFiles = project.resDir().listFiles { _, name ->
+        val resDir = proj.resDir()
+        if (!resDir.exists()) return
+        val listFiles = resDir.listFiles { _, name ->
             name.startsWith("layout") || name.startsWith("navigation")
-        }?.toMutableList() ?: return
-        listFiles.add(project.manifestFile())
-        project.files(listFiles).asFileTree.forEach { xmlFile ->
+        }?.toMutableList() ?: mutableListOf()
+
+        val manifestFile = proj.manifestFile()
+        if (manifestFile.exists()) listFiles.add(manifestFile)
+        if (listFiles.isEmpty()) return
+
+        proj.files(listFiles).asFileTree.forEach { xmlFile ->
             val parentName = xmlFile.parentFile.name
             when {
-                parentName.startsWith("navigation")
-                        || parentName.startsWith("layout") -> {
+                parentName.startsWith("navigation") || parentName.startsWith("layout") -> {
                     xmlFile.writeText(
                         xmlFile.readText().replaceWords(oldClassPath, newClassPath)
                     )
@@ -136,15 +179,12 @@ open class RenameClassGuardTask @Inject constructor(
                 xmlFile.name == "AndroidManifest.xml" -> {
                     val xmlContent = mutableListOf<String>()
                     var text = xmlFile.readText()
-                    findClassByManifest(
-                        text,
-                        xmlContent,
-                        runCatching {
-                        project.extensions.getByName("android")
+                    val namespace = runCatching {
+                        proj.extensions.getByName("android")
                             .javaClass.getMethod("getNamespace")
-                            .invoke(project.extensions.getByName("android")) as? String
+                            .invoke(proj.extensions.getByName("android")) as? String
                     }.getOrNull()
-                    )
+                    findClassByManifest(text, xmlContent, namespace)
                     for (classPath in xmlContent) {
                         val className = classPath.getClassName()
                         if (className == oldName) {
@@ -174,7 +214,7 @@ open class RenameClassGuardTask @Inject constructor(
         file: File, oldClassPath: String,
         newClassPath: String, oldName: String, newName: String
     ) {
-        // oldName 是关键字时，只替换完整类路径的 import，不做裸词替换
+        // oldName 是关键字时跳过
         if (oldName.lowercase() in reservedKeywords) return
         val sb = StringBuilder()
         file.readLines().forEach {
