@@ -172,13 +172,14 @@ open class RenameClassGuardTask @Inject constructor(
             val parentName = xmlFile.parentFile.name
             when {
                 parentName.startsWith("navigation") || parentName.startsWith("layout") -> {
-                    xmlFile.writeText(
-                        xmlFile.readText().replaceWords(oldClassPath, newClassPath)
-                    )
+                    val original = xmlFile.readText()
+                    val replaced = original.replaceWords(oldClassPath, newClassPath)
+                    if (original != replaced) xmlFile.writeText(replaced)
                 }
                 xmlFile.name == "AndroidManifest.xml" -> {
                     val xmlContent = mutableListOf<String>()
-                    var text = xmlFile.readText()
+                    val original = xmlFile.readText()
+                    var text = original
                     val namespace = runCatching {
                         proj.extensions.getByName("android")
                             .javaClass.getMethod("getNamespace")
@@ -191,7 +192,7 @@ open class RenameClassGuardTask @Inject constructor(
                             text = text.replaceWords(classPath, newClassPath)
                         }
                     }
-                    xmlFile.writeText(text)
+                    if (original != text) xmlFile.writeText(text)
                 }
             }
         }
@@ -216,14 +217,19 @@ open class RenameClassGuardTask @Inject constructor(
     ) {
         // oldName 是关键字时跳过
         if (oldName.lowercase() in reservedKeywords) return
-        val sb = StringBuilder()
-        file.readLines().forEach {
-            if (it.startsWith("import")) {
-                sb.append(it.replaceWords(oldClassPath, newClassPath)).append("\n")
+        val originalContent = file.readText()
+        // 检测原始行尾符，保留 CRLF 或 LF
+        val lineSeparator = if (originalContent.contains("\r\n")) "\r\n" else "\n"
+        val newContent = originalContent.split(lineSeparator).joinToString(lineSeparator) { line ->
+            if (line.startsWith("import")) {
+                line.replaceWords(oldClassPath, newClassPath)
             } else {
-                sb.append(it.replaceWords(oldName, newName)).append("\n")
+                line.replaceWords(oldName, newName)
             }
         }
-        file.writeText(sb.toString())
+        // 内容没有变化则不写入，避免无意义的行尾符差异触发 git 变更
+        if (originalContent != newContent) {
+            file.writeText(newContent)
+        }
     }
 }
