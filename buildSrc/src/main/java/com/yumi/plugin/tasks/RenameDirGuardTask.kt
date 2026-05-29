@@ -1,6 +1,5 @@
 package com.yumi.plugin.tasks
 
-import com.android.build.api.dsl.ApplicationExtension
 import com.yumi.plugin.entension.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
@@ -81,7 +80,11 @@ open class RenameDirGuardTask @Inject constructor(
         findClassByManifest(
             text,
             xmlContent,
-            (project.extensions.getByType(ApplicationExtension::class.java)).namespace
+            runCatching {
+            project.extensions.getByName("android")
+                .javaClass.getMethod("getNamespace")
+                .invoke(project.extensions.getByName("android")) as? String
+        }.getOrNull()
         )
         for (classPath in xmlContent) {
             val removeClass = classPath.substring(0, classPath.lastIndexOf("."))
