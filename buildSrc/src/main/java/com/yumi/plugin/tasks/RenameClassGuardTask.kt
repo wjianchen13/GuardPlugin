@@ -1,6 +1,6 @@
 package com.yumi.plugin.tasks
 
-import com.android.build.gradle.AppExtension
+import com.android.build.api.dsl.ApplicationExtension
 import com.yumi.plugin.entension.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
@@ -113,7 +113,7 @@ open class RenameClassGuardTask @Inject constructor(
                     findClassByManifest(
                         text,
                         xmlContent,
-                        (project.extensions.getByName("android") as AppExtension).namespace
+                        (project.extensions.getByType(ApplicationExtension::class.java)).namespace
                     )
                     for (classPath in xmlContent) {
                         val className = classPath.getClassName()
