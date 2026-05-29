@@ -96,7 +96,7 @@ open class RenameClassGuardTask @Inject constructor(
         if (oldName.lowercase() in reservedKeywords) {
             return
         }
-        val classPrefixNameArray = configExtension.classPrefixName
+        val classPrefixNameArray = configExtension.classPrefixName.filter { it.isNotBlank() }.toTypedArray()
         if (classPrefixNameArray.isEmpty()) {
             throw IllegalArgumentException("The classPrefixName has not been configured yet. Please configure the classPrefixName before running the task")
         }

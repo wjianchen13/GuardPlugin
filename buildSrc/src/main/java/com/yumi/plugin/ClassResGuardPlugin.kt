@@ -39,8 +39,10 @@ class ClassResGuardPlugin : Plugin<Project> {
 
 
     private fun checkApplicationPlugin(project: Project) {
-        if (!project.plugins.hasPlugin("com.android.application")) {
-            throw  GradleException("Android Application plugin required")
+        val isApplication = project.plugins.hasPlugin("com.android.application")
+        val isLibrary = project.plugins.hasPlugin("com.android.library")
+        if (!isApplication && !isLibrary) {
+            throw GradleException("Android Application or Library plugin required")
         }
     }
 }
