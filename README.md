@@ -4,3 +4,5 @@
 ./gradlew app:addJunkFile
 
 
+# 参考文档
+https://github.com/coolxinxin/ClassResGuard
