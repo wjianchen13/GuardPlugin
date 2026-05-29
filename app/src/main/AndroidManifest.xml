@@ -23,6 +23,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".test1.TestActivity1" />
+        <activity android:name=".test2.TestActivity2" />
+        <activity android:name=".test3.TestActivity3" />
+        <activity android:name=".test4.TestActivity4" />
+        <activity android:name=".test5.TestActivity5" />
+        <activity android:name=".test6.TestActivity6" />
+        <activity android:name=".test6.test_activity.view.TestMvpActivity" />
+        <activity android:name=".test6.test_fragment.view.TestFragmentActivity1" />
+        <activity android:name=".test6.test_multi_activity.view.TestMultiPartyActivity" />
+        <activity android:name=".test6.test_multi_fragment.view.TestMultiPartyFragmentActivity" />
     </application>
 
 </manifest>
