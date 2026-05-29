@@ -1,7 +1,20 @@
 plugins {
     id 'java-library'
+    id 'org.jetbrains.kotlin.jvm' version '2.0.0'
 }
+
+repositories {
+    google()
+    mavenCentral()
+}
+
 java {
-    sourceCompatibility JavaVersion.VERSION_11
-    targetCompatibility JavaVersion.VERSION_11
+    sourceCompatibility JavaVersion.VERSION_21
+    targetCompatibility JavaVersion.VERSION_21
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation gradleApi()//gradle sdk
+    implementation localGroovy()//groovy sdk
 }
