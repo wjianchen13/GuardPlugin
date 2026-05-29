@@ -1,4 +1,4 @@
-package com.example.mylibrary.kotlin
+package com.yumi.lib_a.kotlin
 
 /**
  * Kotlin中任何一个非抽象类默认都是不可以被继承的，相当于Java 中给类声明了final

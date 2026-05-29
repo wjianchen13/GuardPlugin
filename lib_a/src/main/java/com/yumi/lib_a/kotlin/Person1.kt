@@ -1,4 +1,4 @@
-package com.example.mylibrary.kotlin
+package com.yumi.lib_a.kotlin
 
 
 open class Person1 {
