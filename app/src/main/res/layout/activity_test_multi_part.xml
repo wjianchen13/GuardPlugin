@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rlyt_frame"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/llyt_part1"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:orientation="vertical"
+        android:background="#ff0000"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/tv_part1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="#ff000000"
+            android:text="Fragment MVP 框架测试"/>
+
+        <Button
+            android:id="@+id/btn_part10"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="#ff000000"
+            android:textAllCaps="false"
+            android:text="test"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/llyt_part2"
+        android:layout_width="100dp"
+        android:layout_height="300dp"
+        android:layout_below="@id/llyt_part1"
+        android:layout_alignParentRight="true"
+        android:layout_marginTop="10dp"
+        android:background="#00ff00"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_part2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Fragment MVP 框架测试"
+            android:textColor="#ff000000" />
+
+    </LinearLayout>
+
+    <ViewStub
+        android:id="@+id/vs_part3"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout="@layout/layout_vs_part3"
+        android:inflatedId="@+id/llyt_part3"
+        android:layout_above="@id/llyt_bottom"
+        android:layout_marginBottom="10dp"
+        android:background="#0000ff" />
+
+    <LinearLayout
+        android:id="@+id/llyt_bottom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/btn_test1"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:textAllCaps="false"
+            android:text="获取模块1的数据" />
+
+        <Button
+            android:id="@+id/btn_test2"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:textAllCaps="false"
+            android:text="获取模块2的数据" />
+
+        <Button
+            android:id="@+id/btn_test3"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:textAllCaps="false"
+            android:text="初始化模块3" />
+
+        <Button
+            android:id="@+id/btn_test4"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:textAllCaps="false"
+            android:text="获取模块3的数据" />
+
+    </LinearLayout>
+
+</RelativeLayout>

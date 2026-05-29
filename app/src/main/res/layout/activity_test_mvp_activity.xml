@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/tv_tip"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:gravity="center"
+        android:textColor="#ff000000"
+        android:text="Test Mvp Activity"/>
+
+    <TextView
+        android:id="@+id/tv_tip1"
+        android:layout_width="match_parent"
+        android:layout_height="50dp" 
+        android:gravity="center"
+        android:textColor="#ff000000"
+        android:text="Tip"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/toast"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="show toast"
+        android:onClick="onToast" />
+
+    <Button
+        android:id="@+id/test"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="测试"
+        android:onClick="onTest" />
+
+    <Button
+        android:id="@+id/btn_context"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="获取上下文"
+        android:onClick="onContext" />
+
+    <Button
+        android:id="@+id/btn_tip"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="显示Tip文本"
+        android:onClick="onTip" />
+
+</LinearLayout>
