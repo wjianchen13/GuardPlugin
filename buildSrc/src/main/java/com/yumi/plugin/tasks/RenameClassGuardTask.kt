@@ -162,6 +162,8 @@ open class RenameClassGuardTask @Inject constructor(
 
     private fun renameClass(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, prefixArray: Array<String>) {
         val suffix = file.name.getSuffix()
+        // 文件名无扩展名（suffix == name）时跳过，避免 removeSuffix() 误把目录名当类路径
+        if (suffix == file.name) return
         if (configExtension.filterSuffixFiles.contains(suffix)) {
             return
         }
@@ -202,6 +204,21 @@ open class RenameClassGuardTask @Inject constructor(
         // 3. 替换所有模块资源文件中的引用（layout / navigation / AndroidManifest）
         allAndroidProjects.forEach { proj ->
             obfuscateRes(proj, oldClassPath, newClassPath, oldName)
+        }
+
+        // 4. Kotlin 顶级函数文件会被编译成 <FileName>Kt 类，Java 代码 import 的是这个生成类名。
+        //    例如 NimCommonUtil.kt → NimCommonUtilKt，重命名后需同步更新这类引用。
+        if (suffix == "kt") {
+            val oldNameKt = "${oldName}Kt"
+            val newNameKt = "${classPrefixName}${oldName}Kt"
+            val oldClassPathKt = "${oldClassDir}.${oldNameKt}"
+            val newClassPathKt = "${oldClassDir}.${newNameKt}"
+            allJavaDirs.forEach { javaDir ->
+                obfuscateAllClass(javaDir, oldClassPathKt, newClassPathKt, oldNameKt, newNameKt)
+            }
+            allAndroidProjects.forEach { proj ->
+                obfuscateRes(proj, oldClassPathKt, newClassPathKt, oldNameKt)
+            }
         }
     }
 
