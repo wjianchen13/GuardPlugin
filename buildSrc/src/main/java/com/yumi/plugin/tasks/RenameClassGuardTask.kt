@@ -206,7 +206,60 @@ open class RenameClassGuardTask @Inject constructor(
     }
 
     /**
-     * 替换指定模块的资源文件引用
+     * 收集指定模块所有非测试 sourceSet 的 res 目录和 AndroidManifest 文件。
+     * 通过反射读取，覆盖 src/main/res、src/flavor/debug/res 等所有自定义 res 目录。
+     */
+    private fun collectResFilesForProject(proj: Project): List<File> {
+        val result = mutableListOf<File>()
+        val androidExt = proj.extensions.findByName("android")
+        if (androidExt == null) {
+            // 非 Android 模块兜底
+            proj.resDir().takeIf { it.exists() }?.let { result.add(it) }
+            proj.manifestFile().takeIf { it.exists() }?.let { result.add(it) }
+            return result
+        }
+        try {
+            val sourceSetsContainer = androidExt.javaClass
+                .getMethod("getSourceSets").invoke(androidExt) as? Iterable<*>
+                ?: return result
+            for (ss in sourceSetsContainer) {
+                ss ?: continue
+                val ssName = ss.javaClass.getMethod("getName").invoke(ss) as? String ?: continue
+                if (ssName.startsWith("test") || ssName.startsWith("androidTest")) continue
+
+                // res 目录：getRes().getSrcDirs()
+                runCatching {
+                    val resObj = ss.javaClass.getMethod("getRes").invoke(ss)
+                    val srcDirsRaw = resObj?.javaClass?.getMethod("getSrcDirs")?.invoke(resObj)
+                        as? Iterable<*>
+                    srcDirsRaw?.filterIsInstance<File>()
+                        ?.filter { it.exists() && !it.absolutePath.contains("${File.separator}build${File.separator}") }
+                        ?.forEach { dir ->
+                            if (result.none { it.absolutePath == dir.absolutePath }) result.add(dir)
+                        }
+                }
+
+                // AndroidManifest：getManifest().getSrcFile()
+                runCatching {
+                    val manifestObj = ss.javaClass.getMethod("getManifest").invoke(ss)
+                    val srcFile = manifestObj?.javaClass?.getMethod("getSrcFile")?.invoke(manifestObj) as? File
+                    if (srcFile != null && srcFile.exists()
+                        && result.none { it.absolutePath == srcFile.absolutePath }) {
+                        result.add(srcFile)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // 兜底
+            proj.resDir().takeIf { it.exists() }?.let { result.add(it) }
+            proj.manifestFile().takeIf { it.exists() }?.let { result.add(it) }
+        }
+        return result
+    }
+
+    /**
+     * 替换指定模块的资源文件引用（layout / navigation / AndroidManifest），
+     * 覆盖所有 sourceSet 的 res 目录，包括 src/flavor/debug/res 等自定义目录。
      */
     private fun obfuscateRes(
         proj: Project,
@@ -214,41 +267,37 @@ open class RenameClassGuardTask @Inject constructor(
         newClassPath: String,
         oldName: String
     ) {
-        val resDir = proj.resDir()
-        if (!resDir.exists()) return
-        val listFiles = resDir.listFiles { _, name ->
-            name.startsWith("layout") || name.startsWith("navigation")
-        }?.toMutableList() ?: mutableListOf()
+        val namespace = runCatching {
+            proj.extensions.getByName("android")
+                .javaClass.getMethod("getNamespace")
+                .invoke(proj.extensions.getByName("android")) as? String
+        }.getOrNull()
 
-        val manifestFile = proj.manifestFile()
-        if (manifestFile.exists()) listFiles.add(manifestFile)
-        if (listFiles.isEmpty()) return
-
-        proj.files(listFiles).asFileTree.forEach { xmlFile ->
-            val parentName = xmlFile.parentFile.name
+        collectResFilesForProject(proj).forEach { resEntry ->
             when {
-                parentName.startsWith("navigation") || parentName.startsWith("layout") -> {
-                    val original = xmlFile.readText()
-                    val replaced = original.replaceWords(oldClassPath, newClassPath)
-                    if (original != replaced) xmlFile.writeText(replaced)
+                // res 目录：遍历 layout / navigation 子目录下的 XML
+                resEntry.isDirectory -> {
+                    val subDirs = resEntry.listFiles { _, name ->
+                        name.startsWith("layout") || name.startsWith("navigation")
+                    } ?: return@forEach
+                    proj.files(subDirs.toList()).asFileTree.forEach { xmlFile ->
+                        val original = xmlFile.readText()
+                        val replaced = original.replaceWords(oldClassPath, newClassPath)
+                        if (original != replaced) xmlFile.writeText(replaced)
+                    }
                 }
-                xmlFile.name == "AndroidManifest.xml" -> {
+                // AndroidManifest 文件
+                resEntry.isFile && resEntry.name == "AndroidManifest.xml" -> {
                     val xmlContent = mutableListOf<String>()
-                    val original = xmlFile.readText()
+                    val original = resEntry.readText()
                     var text = original
-                    val namespace = runCatching {
-                        proj.extensions.getByName("android")
-                            .javaClass.getMethod("getNamespace")
-                            .invoke(proj.extensions.getByName("android")) as? String
-                    }.getOrNull()
                     findClassByManifest(text, xmlContent, namespace)
                     for (classPath in xmlContent) {
-                        val className = classPath.getClassName()
-                        if (className == oldName) {
+                        if (classPath.getClassName() == oldName) {
                             text = text.replaceWords(classPath, newClassPath)
                         }
                     }
-                    if (original != text) xmlFile.writeText(text)
+                    if (original != text) resEntry.writeText(text)
                 }
             }
         }

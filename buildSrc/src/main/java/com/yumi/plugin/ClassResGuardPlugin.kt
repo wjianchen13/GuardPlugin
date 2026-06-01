@@ -7,8 +7,8 @@ import com.yumi.plugin.entension.ConfigExtension
 import com.yumi.plugin.tasks.RenameResGuardTask
 import com.yumi.plugin.tasks.RenameClassGuardTask
 import com.yumi.plugin.tasks.AddJunkFileGuardTask
-import com.yumi.plugin.tasks.RenameDirGuardTask
 import com.yumi.plugin.tasks.DeletePrefixClassGuardTask
+import com.yumi.plugin.tasks.RenameDirGuardTask
 
 /**
  *   █████▒█    ██  ▄████▄   ██ ▄█▀       ██████╗ ██╗   ██╗ ██████╗
