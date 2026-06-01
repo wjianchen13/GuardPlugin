@@ -58,23 +58,88 @@ open class RenameClassGuardTask @Inject constructor(
 
     @TaskAction
     fun execute() {
-        // 收集所有模块的 src/main/java 目录
+        // 收集所有模块的 Java 源码目录（含 flavor 等自定义 sourceSet 目录）
         val allJavaDirs = collectAllJavaDirs()
         // 收集所有有 src/main 的模块（用于 res / manifest 替换）
         val allAndroidProjects = collectAllAndroidProjects()
-        // 遍历每个模块目录，执行重命名
+        // 为每个模块目录构建前缀映射：javaDir -> 该模块对应的前缀数组
+        val prefixMap = buildPrefixMap(allJavaDirs)
+        // 遍历每个模块目录，执行重命名（传入 baseDir 供路径计算用）
         allJavaDirs.forEach { dir ->
-            workDir(dir, allJavaDirs, allAndroidProjects)
+            val prefixArray = prefixMap[dir] ?: return@forEach
+            workDir(dir, dir, allJavaDirs, allAndroidProjects, prefixArray)
         }
     }
 
     /**
-     * 收集根项目下所有模块的 src/main/java 目录
+     * 为每个 javaDir 确定前缀数组：
+     * 优先使用 moduleClassPrefixName 中该模块名对应的配置，
+     * 未配置则回退到全局 classPrefixName
+     */
+    private fun buildPrefixMap(allJavaDirs: List<File>): Map<File, Array<String>> {
+        val allProjects = project.rootProject.allprojects.toList()
+        return allJavaDirs.associateWith { javaDir ->
+            // 通过 projectDir 前缀匹配，找到最具体的宿主模块（不依赖固定层数）
+            val moduleName = allProjects
+                .filter { proj ->
+                    javaDir.absolutePath.startsWith(proj.projectDir.absolutePath + File.separator)
+                }
+                .minByOrNull { proj ->
+                    javaDir.absolutePath.length - proj.projectDir.absolutePath.length
+                }
+                ?.name
+                ?: javaDir.parentFile.parentFile.parentFile.name  // 兜底：原来的 3 层逻辑
+            val modulePrefix = configExtension.moduleClassPrefixName[moduleName]
+                ?.filter { it.isNotBlank() }
+                ?.toTypedArray()
+            if (!modulePrefix.isNullOrEmpty()) {
+                modulePrefix
+            } else {
+                configExtension.classPrefixName.filter { it.isNotBlank() }.toTypedArray()
+            }
+        }
+    }
+
+    /**
+     * 收集根项目下所有模块的 Java 源码目录，包括 flavor 等自定义 sourceSet 目录。
+     * 通过纯反射访问 Android 扩展，避免 buildSrc compileOnly 与运行时 AGP 版本不同
+     * 导致的 ClassLoader 隔离问题（直接强转会静默返回 null）。
      */
     private fun collectAllJavaDirs(): List<File> {
-        return project.rootProject.allprojects
-            .map { it.file("src/main/java") }
-            .filter { it.exists() }
+        val dirs = mutableListOf<File>()
+        project.rootProject.allprojects.forEach { proj ->
+            val androidExt = proj.extensions.findByName("android")
+            if (androidExt == null) {
+                // 非 Android 模块：兜底只取 src/main/java
+                proj.file("src/main/java").takeIf { it.exists() }?.let { dirs.add(it) }
+                return@forEach
+            }
+            try {
+                // 用反射调用 getSourceSets()，绕开 ClassLoader 隔离
+                val sourceSetsContainer = androidExt.javaClass
+                    .getMethod("getSourceSets").invoke(androidExt) as? Iterable<*>
+                    ?: return@forEach
+                for (ss in sourceSetsContainer) {
+                    ss ?: continue
+                    val ssName = ss.javaClass.getMethod("getName").invoke(ss) as? String ?: continue
+                    if (ssName.startsWith("test") || ssName.startsWith("androidTest")) continue
+                    // getJava() → AndroidSourceDirectorySet
+                    val javaObj = ss.javaClass.getMethod("getJava").invoke(ss) ?: continue
+                    // getSrcDirs() → Set<File>
+                    val srcDirsRaw = javaObj.javaClass.getMethod("getSrcDirs").invoke(javaObj)
+                        as? Iterable<*> ?: continue
+                    srcDirsRaw.filterIsInstance<File>()
+                        .filter { it.exists() && !it.absolutePath.contains("${File.separator}build${File.separator}") }
+                        .forEach { dir ->
+                            if (dirs.none { it.absolutePath == dir.absolutePath }) dirs.add(dir)
+                        }
+                }
+            } catch (e: Exception) {
+                // 反射失败时兜底
+                proj.file("src/main/java").takeIf { it.exists() }?.let { dirs.add(it) }
+            }
+        }
+        return dirs
     }
 
     /**
@@ -85,32 +150,20 @@ open class RenameClassGuardTask @Inject constructor(
             .filter { it.file("src/main").exists() }
     }
 
-    private fun workDir(file: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>) {
+    private fun workDir(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, prefixArray: Array<String>) {
         file.listFiles()?.forEach {
             if (it.isDirectory) {
-                workDir(it, allJavaDirs, allAndroidProjects)
+                workDir(it, baseDir, allJavaDirs, allAndroidProjects, prefixArray)
             } else {
-                renameClass(it, allJavaDirs, allAndroidProjects)
+                renameClass(it, baseDir, allJavaDirs, allAndroidProjects, prefixArray)
             }
         }
     }
 
-    private fun renameClass(file: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>) {
-        val path = file.path.replace(File.separator, ".").removeSuffix()
+    private fun renameClass(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, prefixArray: Array<String>) {
         val suffix = file.name.getSuffix()
         if (configExtension.filterSuffixFiles.contains(suffix)) {
             return
-        }
-        val javaPkg = "src.main.java."
-        val kotlinPkg = "src.main.kotlin."
-        var startIndex = path.lastIndexOf(javaPkg)
-        var isJavaPkg = true
-        if (startIndex == -1) {
-            isJavaPkg = false
-            startIndex = path.lastIndexOf(kotlinPkg)
-            if (startIndex == -1) {
-                throw IllegalArgumentException("Only src\\main\\java or src\\main\\kotlin directories are supported")
-            }
         }
         val oldName = file.name.removeSuffix()
         if (oldName.isBlank()) {
@@ -120,18 +173,21 @@ open class RenameClassGuardTask @Inject constructor(
         if (oldName.lowercase() in reservedKeywords) {
             return
         }
-        val classPrefixNameArray = configExtension.classPrefixName.filter { it.isNotBlank() }.toTypedArray()
-        if (classPrefixNameArray.isEmpty()) {
+        if (prefixArray.isEmpty()) {
             throw IllegalArgumentException("The classPrefixName has not been configured yet. Please configure the classPrefixName before running the task")
         }
-        val classPrefixName = if (classPrefixNameArray.size == 1) {
-            classPrefixNameArray[0]
+        val classPrefixName = if (prefixArray.size == 1) {
+            prefixArray[0]
         } else {
-            classPrefixNameArray[random.nextInt(classPrefixNameArray.size)]
+            prefixArray[random.nextInt(prefixArray.size)]
         }
         val newName = "$classPrefixName${oldName}"
-        val length = if (isJavaPkg) javaPkg.length else kotlinPkg.length
-        val oldClassPath = path.substring(startIndex + length, path.length)
+        // 用 baseDir 直接计算相对类路径，支持任意源码目录结构（不再依赖 src.main.java 硬编码）
+        val baseDirDots = baseDir.absolutePath.replace(File.separator, ".") + "."
+        val fileDots = file.absolutePath.replace(File.separator, ".").removeSuffix()
+        val baseDirIndex = fileDots.indexOf(baseDirDots)
+        if (baseDirIndex == -1) return   // 文件不在 baseDir 下，跳过（防御性检查）
+        val oldClassPath = fileDots.substring(baseDirIndex + baseDirDots.length)
         val oldClassDir = oldClassPath.getDirPath()
         val newClassPath = "${oldClassDir}.${newName}"
 
