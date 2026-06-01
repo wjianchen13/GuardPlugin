@@ -8,6 +8,7 @@ import com.yumi.plugin.tasks.RenameResGuardTask
 import com.yumi.plugin.tasks.RenameClassGuardTask
 import com.yumi.plugin.tasks.AddJunkFileGuardTask
 import com.yumi.plugin.tasks.RenameDirGuardTask
+import com.yumi.plugin.tasks.DeletePrefixClassGuardTask
 
 /**
  *   █████▒█    ██  ▄████▄   ██ ▄█▀       ██████╗ ██╗   ██╗ ██████╗
@@ -35,6 +36,7 @@ class ClassResGuardPlugin : Plugin<Project> {
         project.tasks.create("addJunkFile", AddJunkFileGuardTask::class.java, configExtension)
         project.tasks.create("renameClass", RenameClassGuardTask::class.java, configExtension)
         project.tasks.create("renameDir", RenameDirGuardTask::class.java, configExtension)
+        project.tasks.create("deletePrefixClass", DeletePrefixClassGuardTask::class.java, configExtension)
     }
 
 
