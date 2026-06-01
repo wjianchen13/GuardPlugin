@@ -29,6 +29,15 @@ classResGuard {
             "hyk_frame" : ["Leoe1", "Leoe2", "Leoe3"]
     ]
 
+    // ── 过滤配置 ──────────────────────────────────────────────────────
+    // 全局过滤：所有模块中这些类名不参与重命名
+    filterClassNames = ["MainActivity", "BaseActivity", "App"]
+    // 模块独立过滤：仅对指定模块生效，与 filterClassNames 取并集
+    moduleFilterClassNames = [
+            "hyk_app"   : ["SplashActivity", "HomeActivity"],
+            "hyk_frame" : ["LeoFrameBase"]
+    ]
+
     //Class的前缀名称,固定前缀配单个,随机前缀配置需要随机的前缀数组["Large","SuperT"]
     classPrefixName = ["Leo"]
     //需要过滤后缀的文件

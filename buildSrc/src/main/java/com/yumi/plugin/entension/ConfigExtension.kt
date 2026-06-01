@@ -56,6 +56,18 @@ open class ConfigExtension {
 
     var filterSuffixFiles: Array<String> = arrayOf("")
 
+    /**
+     * 全局过滤类名列表：列表内的类名不参与重命名（匹配文件名去掉扩展名后的名称）
+     * 示例：filterClassNames = ["MainActivity", "BaseActivity"]
+     */
+    var filterClassNames: Array<String> = arrayOf()
+
+    /**
+     * 各模块独立过滤列表，与 filterClassNames 取并集一起生效
+     * 示例：moduleFilterClassNames = ["hyk_app": ["MainActivity", "SplashActivity"]]
+     */
+    var moduleFilterClassNames: Map<String, List<String>> = emptyMap()
+
     var changeResDir: Array<String>? = null
 
     var junkPackage = "com.leos.superplugin"

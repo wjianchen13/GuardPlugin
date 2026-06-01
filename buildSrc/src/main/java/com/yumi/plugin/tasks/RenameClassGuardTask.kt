@@ -31,11 +31,12 @@ open class RenameClassGuardTask @Inject constructor(
         group = "guard"
     }
 
-    /** 每个源码目录对应的命名配置（前缀 / 中缀 / 后缀各自的候选列表） */
+    /** 每个源码目录对应的命名配置（前缀 / 中缀 / 后缀各自的候选列表 + 过滤集合） */
     private data class NamingConfig(
-        val prefixes: Array<String>,   // 前缀候选，随机选一个
-        val infixes:  Array<String>,   // 中缀候选，随机选一个；空则不插入
-        val suffixes: Array<String>    // 后缀候选，随机选一个；空则不追加
+        val prefixes:     Array<String>,  // 前缀候选，随机选一个
+        val infixes:      Array<String>,  // 中缀候选，随机选一个；空则不插入
+        val suffixes:     Array<String>,  // 后缀候选，随机选一个；空则不追加
+        val filterNames:  Set<String>     // 不参与重命名的类名集合（全局 + 模块级并集）
     )
 
     private val random by lazy { Random() }
@@ -103,10 +104,17 @@ open class RenameClassGuardTask @Inject constructor(
                 else global.filter { it.isNotBlank() }.toTypedArray()
             }
 
+            // 过滤集合 = 全局过滤 ∪ 模块独立过滤
+            val globalFilter = configExtension.filterClassNames
+                .filter { it.isNotBlank() }.toSet()
+            val moduleFilter = configExtension.moduleFilterClassNames[moduleName]
+                ?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+
             NamingConfig(
-                prefixes = resolve(configExtension.moduleClassPrefixName, configExtension.classPrefixName),
-                infixes  = resolve(configExtension.moduleClassMiddleName,  configExtension.classMiddleName),
-                suffixes = resolve(configExtension.moduleClassAfterName,   configExtension.classAfterName)
+                prefixes    = resolve(configExtension.moduleClassPrefixName, configExtension.classPrefixName),
+                infixes     = resolve(configExtension.moduleClassMiddleName,  configExtension.classMiddleName),
+                suffixes    = resolve(configExtension.moduleClassAfterName,   configExtension.classAfterName),
+                filterNames = globalFilter + moduleFilter
             )
         }
     }
@@ -181,6 +189,8 @@ open class RenameClassGuardTask @Inject constructor(
         if (oldName.isBlank()) return
         // 文件名本身是关键字，跳过重命名
         if (oldName.lowercase() in reservedKeywords) return
+        // 命中过滤列表，跳过重命名
+        if (oldName in naming.filterNames) return
 
         if (naming.prefixes.isEmpty()) {
             throw IllegalArgumentException("The classPrefixName has not been configured yet. Please configure the classPrefixName before running the task")
