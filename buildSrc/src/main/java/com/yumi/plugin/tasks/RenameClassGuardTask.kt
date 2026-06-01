@@ -31,6 +31,13 @@ open class RenameClassGuardTask @Inject constructor(
         group = "guard"
     }
 
+    /** 每个源码目录对应的命名配置（前缀 / 中缀 / 后缀各自的候选列表） */
+    private data class NamingConfig(
+        val prefixes: Array<String>,   // 前缀候选，随机选一个
+        val infixes:  Array<String>,   // 中缀候选，随机选一个；空则不插入
+        val suffixes: Array<String>    // 后缀候选，随机选一个；空则不追加
+    )
+
     private val random by lazy { Random() }
 
     // Kotlin 及 Java 关键字黑名单，禁止被当作类名重命名
@@ -62,21 +69,20 @@ open class RenameClassGuardTask @Inject constructor(
         val allJavaDirs = collectAllJavaDirs()
         // 收集所有有 src/main 的模块（用于 res / manifest 替换）
         val allAndroidProjects = collectAllAndroidProjects()
-        // 为每个模块目录构建前缀映射：javaDir -> 该模块对应的前缀数组
-        val prefixMap = buildPrefixMap(allJavaDirs)
+        // 为每个模块目录构建命名配置：javaDir -> NamingConfig（前缀/中缀/后缀）
+        val namingMap = buildNamingMap(allJavaDirs)
         // 遍历每个模块目录，执行重命名（传入 baseDir 供路径计算用）
         allJavaDirs.forEach { dir ->
-            val prefixArray = prefixMap[dir] ?: return@forEach
-            workDir(dir, dir, allJavaDirs, allAndroidProjects, prefixArray)
+            val naming = namingMap[dir] ?: return@forEach
+            workDir(dir, dir, allJavaDirs, allAndroidProjects, naming)
         }
     }
 
     /**
-     * 为每个 javaDir 确定前缀数组：
-     * 优先使用 moduleClassPrefixName 中该模块名对应的配置，
-     * 未配置则回退到全局 classPrefixName
+     * 为每个 javaDir 构建 NamingConfig（前缀 / 中缀 / 后缀候选列表）。
+     * 优先使用模块级配置，未配置则回退到全局配置。
      */
-    private fun buildPrefixMap(allJavaDirs: List<File>): Map<File, Array<String>> {
+    private fun buildNamingMap(allJavaDirs: List<File>): Map<File, NamingConfig> {
         val allProjects = project.rootProject.allprojects.toList()
         return allJavaDirs.associateWith { javaDir ->
             // 通过 projectDir 前缀匹配，找到最具体的宿主模块（不依赖固定层数）
@@ -88,15 +94,20 @@ open class RenameClassGuardTask @Inject constructor(
                     javaDir.absolutePath.length - proj.projectDir.absolutePath.length
                 }
                 ?.name
-                ?: javaDir.parentFile.parentFile.parentFile.name  // 兜底：原来的 3 层逻辑
-            val modulePrefix = configExtension.moduleClassPrefixName[moduleName]
-                ?.filter { it.isNotBlank() }
-                ?.toTypedArray()
-            if (!modulePrefix.isNullOrEmpty()) {
-                modulePrefix
-            } else {
-                configExtension.classPrefixName.filter { it.isNotBlank() }.toTypedArray()
+                ?: javaDir.parentFile.parentFile.parentFile.name  // 兜底
+
+            /** 从模块级 map 取候选列表，没有则回退到全局数组 */
+            fun resolve(moduleMap: Map<String, List<String>>, global: Array<String>): Array<String> {
+                val fromModule = moduleMap[moduleName]?.filter { it.isNotBlank() }?.toTypedArray()
+                return if (!fromModule.isNullOrEmpty()) fromModule
+                else global.filter { it.isNotBlank() }.toTypedArray()
             }
+
+            NamingConfig(
+                prefixes = resolve(configExtension.moduleClassPrefixName, configExtension.classPrefixName),
+                infixes  = resolve(configExtension.moduleClassMiddleName,  configExtension.classMiddleName),
+                suffixes = resolve(configExtension.moduleClassAfterName,   configExtension.classAfterName)
+            )
         }
     }
 
@@ -150,40 +161,41 @@ open class RenameClassGuardTask @Inject constructor(
             .filter { it.file("src/main").exists() }
     }
 
-    private fun workDir(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, prefixArray: Array<String>) {
+    private fun workDir(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, naming: NamingConfig) {
         file.listFiles()?.forEach {
             if (it.isDirectory) {
-                workDir(it, baseDir, allJavaDirs, allAndroidProjects, prefixArray)
+                workDir(it, baseDir, allJavaDirs, allAndroidProjects, naming)
             } else {
-                renameClass(it, baseDir, allJavaDirs, allAndroidProjects, prefixArray)
+                renameClass(it, baseDir, allJavaDirs, allAndroidProjects, naming)
             }
         }
     }
 
-    private fun renameClass(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, prefixArray: Array<String>) {
-        val suffix = file.name.getSuffix()
-        // 文件名无扩展名（suffix == name）时跳过，避免 removeSuffix() 误把目录名当类路径
-        if (suffix == file.name) return
-        if (configExtension.filterSuffixFiles.contains(suffix)) {
-            return
-        }
+    private fun renameClass(file: File, baseDir: File, allJavaDirs: List<File>, allAndroidProjects: List<Project>, naming: NamingConfig) {
+        val fileExt = file.name.getSuffix()
+        // 文件名无扩展名（fileExt == name）时跳过，避免 removeSuffix() 误把目录名当类路径
+        if (fileExt == file.name) return
+        if (configExtension.filterSuffixFiles.contains(fileExt)) return
+
         val oldName = file.name.removeSuffix()
-        if (oldName.isBlank()) {
-            return
-        }
+        if (oldName.isBlank()) return
         // 文件名本身是关键字，跳过重命名
-        if (oldName.lowercase() in reservedKeywords) {
-            return
-        }
-        if (prefixArray.isEmpty()) {
+        if (oldName.lowercase() in reservedKeywords) return
+
+        if (naming.prefixes.isEmpty()) {
             throw IllegalArgumentException("The classPrefixName has not been configured yet. Please configure the classPrefixName before running the task")
         }
-        val classPrefixName = if (prefixArray.size == 1) {
-            prefixArray[0]
-        } else {
-            prefixArray[random.nextInt(prefixArray.size)]
-        }
-        val newName = "$classPrefixName${oldName}"
+
+        // 从候选列表中随机选取前缀 / 中缀 / 后缀
+        val prefix = if (naming.prefixes.size == 1) naming.prefixes[0]
+                     else naming.prefixes[random.nextInt(naming.prefixes.size)]
+        val infix  = if (naming.infixes.isEmpty()) "" else naming.infixes[random.nextInt(naming.infixes.size)]
+        val nameSuffix = if (naming.suffixes.isEmpty()) "" else naming.suffixes[random.nextInt(naming.suffixes.size)]
+
+        // 中缀插入位置：length / 2（整除，偶数/奇数均适用）
+        // 偶数：直接取中点；奇数：(len-1)/2 == len/2（整除）
+        val mid = oldName.length / 2
+        val newName = "${prefix}${oldName.substring(0, mid)}${infix}${oldName.substring(mid)}${nameSuffix}"
         // 用 baseDir 直接计算相对类路径，支持任意源码目录结构（不再依赖 src.main.java 硬编码）
         val baseDirDots = baseDir.absolutePath.replace(File.separator, ".") + "."
         val fileDots = file.absolutePath.replace(File.separator, ".").removeSuffix()
@@ -207,10 +219,10 @@ open class RenameClassGuardTask @Inject constructor(
         }
 
         // 4. Kotlin 顶级函数文件会被编译成 <FileName>Kt 类，Java 代码 import 的是这个生成类名。
-        //    例如 NimCommonUtil.kt → NimCommonUtilKt，重命名后需同步更新这类引用。
-        if (suffix == "kt") {
+        //    例如 NimCommonUtil.kt → LeoNimCommonUtil.kt，对应的 NimCommonUtilKt 引用也要更新。
+        if (fileExt == "kt") {
             val oldNameKt = "${oldName}Kt"
-            val newNameKt = "${classPrefixName}${oldName}Kt"
+            val newNameKt = "${newName}Kt"  // 新文件名（含前/中/后缀） + Kt
             val oldClassPathKt = "${oldClassDir}.${oldNameKt}"
             val newClassPathKt = "${oldClassDir}.${newNameKt}"
             allJavaDirs.forEach { javaDir ->
